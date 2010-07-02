@@ -25,12 +25,44 @@
 
 #include <fstream>
 #include <iostream>
+#include <ncurses.h>
 
 #include <boost/program_options.hpp>
 
 namespace po = boost::program_options;
 
 namespace mongo {
+
+    class StdPrinter {
+    public:
+        void print(stringstream& ss) {
+            cout << ss.str();
+        }
+        void printHeader(stringstream& ss) {
+            print(ss);
+        }
+    };
+
+
+    class PrettyPrinter : public StdPrinter {
+    public:
+        PrettyPrinter() {
+            initscr();
+        }
+        ~PrettyPrinter() {
+            endwin();
+        }
+        void print(stringstream& ss) {
+            printw(ss.str().c_str());
+            refresh();
+        }
+        void printHeader(stringstream& ss) {
+            attron(A_BOLD);
+            printw(ss.str().c_str());
+            attroff(A_BOLD);
+            refresh();
+        }
+    };
     
     class Stat : public Tool {
     public:
@@ -40,6 +72,7 @@ namespace mongo {
             _rowNum = 0;
             _showHeaders = true;
             _http = false;
+            _pretty = 0;
 
             add_hidden_options()
                 ( "sleep" , po::value<int>() , "time to sleep between calls" )
@@ -48,6 +81,7 @@ namespace mongo {
                 ("noheaders", "don't output column names")
                 ("rowcount,n", po::value<int>()->default_value(0), "number of stats lines to print (0 for indefinite)")
                 ("http", "use http instead of raw db connection")
+                ("mongos", "use ncurses to print the status of a sharded cluster")
                 ;
 
             addPositionArg( "sleep" , 1 );
@@ -208,6 +242,13 @@ namespace mongo {
 
         int run(){ 
             _sleep = getParam( "sleep" , _sleep );
+            if ( hasParam( "mongos" ) ) {
+                _printer = new PrettyPrinter();
+            }
+            else {
+                _printer = new StdPrinter();
+            }
+
             if ( hasParam( "noheaders" ) ) {
                 _showHeaders = false;
             }
@@ -242,11 +283,16 @@ namespace mongo {
                 
                 prev = now;
             }
+
+            delete(_printer);
+
             return 0;
         }
         
 
+        StdPrinter *_printer;
         int _sleep;
+        int _pretty;
         int _rowNum;
         int _rowCount;
         bool _showHeaders;
