@@ -33,16 +33,66 @@ namespace po = boost::program_options;
 
 namespace mongo {
 
+    string header;
+
     class StdPrinter {
     public:
-        void print(stringstream& ss) {
-            cout << ss.str();
+        virtual ~StdPrinter() {}
+
+        virtual void print(string& s) {
+            cout << s << endl;
         }
-        void printHeader(stringstream& ss) {
-            print(ss);
+        virtual void printHeader() {
+            cout << header << endl;
+        }
+
+        void generateHeader(BSONObj b) {
+            stringstream ss;
+
+            if ( b["opcounters"].type() == Object ){
+                BSONObj ops = b["opcounters"].embeddedObject();
+                BSONObjIterator i( ops );
+                while ( i.more() ){
+                    BSONElement e = i.next();
+                    cellstart( ss , (string)(e.fieldName()) + "/s" , 6 );
+                }
+            }
+
+	    if ( b["backgroundFlushing"].type() == Object ){
+                BSONObj bf = b["backgroundFlushing"].embeddedObject();
+                BSONObjIterator i( bf );
+                cellstart( ss , "flushes/s" , 6 );
+            }
+
+            if ( b.getFieldDotted("mem.supported").trueValue() ){
+                BSONObj bx = b["mem"].embeddedObject();
+                BSONObjIterator i( bx );
+                cellstart( ss , "mapped" , 6 );
+                cellstart( ss , "vsize" , 6 );
+                cellstart( ss , "res" , 6 );
+            }
+
+            if ( b["extra_info"].type() == Object ){
+                BSONObj bx = b["extra_info"].embeddedObject();
+                if ( bx["page_faults"].type() || bx["page_faults"].type() )
+                    cellstart( ss , "faults/s" , 6 );
+            }
+            
+            cellstart( ss , "% locked" , 8 );
+            cellstart( ss , "% idx miss", 8 );
+            cellstart( ss , "conn" , 5 );
+            cellstart( ss , "time" , 8 );
+
+            header = ss.str();
+        }
+
+    private:
+        void cellstart( stringstream& ss , string name , unsigned width ){
+            if ( name.size() > width )
+                width = name.size();
+            ss << setw(width) << name << " ";            
         }
     };
-
 
     class PrettyPrinter : public StdPrinter {
     public:
@@ -52,17 +102,19 @@ namespace mongo {
         ~PrettyPrinter() {
             endwin();
         }
-        void print(stringstream& ss) {
-            printw(ss.str().c_str());
+        void print(string& s) {
+            move(1, 0); 
+            printw("%s\n", s.c_str());
             refresh();
         }
-        void printHeader(stringstream& ss) {
+        void printHeader() {
             attron(A_BOLD);
-            printw(ss.str().c_str());
+            mvprintw(0, 0, "%s", header.c_str());
             attroff(A_BOLD);
             refresh();
         }
     };
+
     
     class Stat : public Tool {
     public:
@@ -146,29 +198,24 @@ namespace mongo {
             return x / y;
         }
 
-        void cellstart( stringstream& ss , string name , unsigned& width ){
-            if ( ! _showHeaders ) {
-                return;
-            }
+        void cellwidth(string name , unsigned& width) {
             if ( name.size() > width )
                 width = name.size();
-            if ( _rowNum % 20 == 0 )
-                cout << setw(width) << name << " ";            
         }
 
         void cell( stringstream& ss , string name , unsigned width , double val ){
-            cellstart( ss , name , width );
+            cellwidth(name, width);
             ss << setw(width) << setprecision(3) << val << " ";
         }
 
         void cell( stringstream& ss , string name , unsigned width , int val ){
-            cellstart( ss , name , width );
+            cellwidth(name, width);
             ss << setw(width) << val << " ";
         }
 
         void cell( stringstream& ss , string name , unsigned width , const string& val ){
             assert( val.size() <= width );
-            cellstart( ss , name , width );
+            cellwidth(name, width);
             ss << setw(width) << val << " ";
         }
 
@@ -224,10 +271,6 @@ namespace mongo {
                 cell( ss , "time" , 8 , temp.str() );
             }
 
-            if ( _showHeaders && _rowNum % 20 == 0 ){
-                // this is the newline after the header line
-                cout << endl;
-            }
             _rowNum++;
 
             return ss.str();
@@ -258,6 +301,8 @@ namespace mongo {
             if ( prev.isEmpty() )
                 return -1;
 
+            _printer->generateHeader(prev);
+
             while ( _rowCount == 0 || _rowNum < _rowCount ){
                 sleepsecs(_sleep);
                 BSONObj now;
@@ -272,8 +317,13 @@ namespace mongo {
                 if ( now.isEmpty() )
                     return -2;
                 
+
+                if ( _rowNum == 0 || (!_pretty && _showHeaders && _rowNum % 20 == 0)) {
+                    _printer->printHeader();
+                }
                 try {
-                    cout << doRow( prev , now ) << endl;
+                    string s = doRow( prev , now );
+                    _printer->print( s );
                 }
                 catch ( AssertionException& e ){
                     cout << "\nerror: " << e.what() << "\n"
