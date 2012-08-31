@@ -1,4 +1,4 @@
-MongoDB README
+MongoDB README - A Change!
 
 Welcome to MongoDB!
 
@@ -18,7 +18,7 @@ UTILITIES
   mongostat         - Show performance statistics
 
 BUILDING
-      
+
   See docs/building.md, also www.mongodb.org search for "Building".
 
 RUNNING
@@ -33,12 +33,12 @@ RUNNING
     $ ./mongod
     $
     $ # The mongo javascript shell connects to localhost and test database by default:
-    $ ./mongo 
+    $ ./mongo
     > help
 
 DRIVERS
 
-  Client drivers for most programming languages are available at mongodb.org.  Use the 
+  Client drivers for most programming languages are available at mongodb.org.  Use the
   shell ("mongo") for administrative tasks.
 
 DOCUMENTATION
